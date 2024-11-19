@@ -7,6 +7,7 @@ import sys
 import toml
 from sklearn.decomposition import PCA
 import os
+import numpy as np
 
 
 # Define a signal handler for graceful termination
@@ -128,6 +129,48 @@ def visualize_pca(grid, epoch):
     plt.title(f"PCA Visualization (Epoch {epoch})")
     plt.pause(0.1)
 
+# Add Fourier Transform visualization function
+def visualize_ft(grid, epoch):
+    grid_np = grid.detach().cpu().numpy()  # Convert grid to NumPy
+    ft_sum = np.zeros((grid.shape[2], grid.shape[3]))  # Initialize FT sum across channels
+
+    for channel in range(grid.shape[1]):  # Iterate over all channels
+        ft = np.fft.fft2(grid_np[0, channel, :, :])  # 2D Fourier Transform
+        ft_magnitude = np.abs(np.fft.fftshift(ft))  # Shift zero frequency to center
+        ft_sum += ft_magnitude  # Sum magnitudes across all channels
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(np.log1p(ft_sum), cmap="inferno")  # Log scale for better visualization
+    plt.colorbar()
+    plt.title(f"Fourier Transform Visualization (Epoch {epoch})")
+    plt.pause(0.1)  # Pause to display the plot
+
+# Visualization function for PCA and FT combined in one figure
+def visualize_pca_and_ft(grid, epoch, pca_ax, ft_ax):
+    grid_np = grid.detach().cpu().numpy()  # Convert grid to NumPy
+    
+    # PCA Visualization
+    reshaped = grid_np[0].reshape(grid.shape[1], -1).T  # Shape: (height*width, channels)
+    pca = PCA(n_components=1)  # Reduce to 1 component
+    pca_result = pca.fit_transform(reshaped)  # Shape: (height*width, 1)
+    pca_grid = pca_result.reshape(grid.shape[2], grid.shape[3])  # Reshape to grid size
+    
+    pca_ax.clear()
+    pca_ax.imshow(pca_grid, cmap="viridis")
+    pca_ax.set_title(f"PCA Visualization (Epoch {epoch})")
+    pca_ax.axis("off")
+
+    # Fourier Transform Visualization
+    ft_sum = np.zeros((grid.shape[2], grid.shape[3]))  # Initialize FT sum across channels
+    for channel in range(grid.shape[1]):  # Iterate over all channels
+        ft = np.fft.fft2(grid_np[0, channel, :, :])  # 2D Fourier Transform
+        ft_magnitude = np.abs(np.fft.fftshift(ft))  # Shift zero frequency to center
+        ft_sum += ft_magnitude
+
+    ft_ax.clear()
+    ft_ax.imshow(np.log1p(ft_sum), cmap="inferno")  # Log scale for better visualization
+    ft_ax.set_title(f"Fourier Transform (Epoch {epoch})")
+    ft_ax.axis("off")
 
 if __name__ == "__main__":
     # Configuration
@@ -136,10 +179,10 @@ if __name__ == "__main__":
     
     num_channels = 16
     grid_size = 64
-    batch_size = 8
-    epochs = 10000
+    batch_size = 64
+    epochs = 100000
     steps_per_epoch = 16
-    checkpoint_dir = "o2"
+    checkpoint_dir = "o6"
     visualize_step = 1
     save_checkpoint_step = 100
 
@@ -162,6 +205,10 @@ if __name__ == "__main__":
         regularization = 1e-4 * torch.sum(grid ** 2)  # Regularization
         change_loss = torch.mean((grid - prev_grid) ** 2)
         return spread_loss + regularization + 1e-2 * change_loss
+
+    # Persistent figure and axes for visualization
+    plt.ion()  # Turn on interactive mode
+    fig, (pca_ax, ft_ax) = plt.subplots(1, 2, figsize=(12, 6))  # Single figure with two subplots
 
     # Training loop
     try:
@@ -191,13 +238,33 @@ if __name__ == "__main__":
             # Visualization
             if epoch % visualize_step == 0:
                 print(f"Epoch {epoch}, Loss: {loss.item()}")
-                visualize_pca(grid, epoch)
+                #visualize_pca(grid, epoch)
+
+                # # Show PCA and FT visualizations
+                # plt.figure(figsize=(12, 6))  # Create a shared figure for both visualizations
+                
+                # # Subplot for PCA
+                # plt.subplot(1, 2, 1)
+                # visualize_pca(grid, epoch)
+                
+                # # Subplot for Fourier Transform
+                # plt.subplot(1, 2, 2)
+                # visualize_ft(grid, epoch)
+
+                # plot both
+            # Visualization
+            if epoch % visualize_step == 0:
+                print(f"Epoch {epoch}, Loss: {loss.item()}")
+                visualize_pca_and_ft(grid, epoch, pca_ax, ft_ax)
+                plt.pause(0.1)  # Pause to update the plot
+
 
     except KeyboardInterrupt:
         print("\nTraining interrupted by user.")
     finally:
         plt.ioff()
-        visualize_pca(grid.cpu(), epoch="Final")
+        #visualize_pca(grid.cpu(), epoch="Final")
+        #visualize_ft(grid.cpu(), epoch="Final")
         plt.show()
 
 
